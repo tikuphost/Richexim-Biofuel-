@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --brand-primary: #1b4d27;
+    --brand-emerald: #2a6e3a;
+    --brand-emerald-light: #3e8e50;
+    --brand-accent: #f5b342;
+    --brand-accent-hover: #e09f30;
+    --brand-bg: #f9fbf7;
+    --brand-card: #ffffff;
+    --brand-muted: #f4f7ee;
+    --brand-border: #e3ede0;
+    --brand-text: #172e18;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #f9fbf7;
+    color: #172e18;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .font-heading {
+    font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f0f5ec;
+}
+::-webkit-scrollbar-thumb {
+  background: #c3d9bc;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a6e3a;
+}
+
+/* Print specific styles for Proforma Invoices */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-proforma, #printable-proforma * {
+    visibility: visible;
+  }
+  #printable-proforma {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    background: white;
+    box-shadow: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
