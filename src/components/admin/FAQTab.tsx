@@ -82,7 +82,7 @@ export const FAQTab: React.FC = () => {
     };
 
     if (editingFAQ) {
-      await updateFAQ(faqPayload);
+      await updateFAQ(editingFAQ.id, faqPayload);
     } else {
       await addFAQ(faqPayload);
     }

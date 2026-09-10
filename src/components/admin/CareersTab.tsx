@@ -118,7 +118,7 @@ export const CareersTab: React.FC = () => {
     };
 
     if (editingJob) {
-      await updateCareer(jobPayload);
+      await updateCareer(editingJob.id, jobPayload);
     } else {
       await addCareer(jobPayload);
     }
@@ -133,7 +133,7 @@ export const CareersTab: React.FC = () => {
   };
 
   const handleToggleActive = async (j: CareerJob) => {
-    await updateCareer({ ...j, active: !j.active });
+    await updateCareer(j.id, { active: !j.active });
   };
 
   return (

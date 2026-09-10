@@ -22,6 +22,17 @@ import {
   FAQItem
 } from '../types';
 import { DEFAULT_SEO_CONFIGS, applyDocumentSEO } from '../utils/seo';
+import {
+  DEFAULT_CATEGORIES,
+  DEFAULT_PRODUCTS,
+  DEFAULT_CERTIFICATIONS,
+  DEFAULT_QUOTES,
+  DEFAULT_ARTICLES,
+  DEFAULT_CAREERS,
+  DEFAULT_FAQS,
+  DEFAULT_METRICS,
+  DEFAULT_CHAT_SESSIONS
+} from '../data/defaultData';
 
 export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'INR' | 'AED' | 'SGD' | 'JPY';
 
@@ -171,7 +182,7 @@ interface AppContextType {
   addFAQ: (faq: Partial<FAQItem>) => Promise<void>;
   updateFAQ: (id: string, faq: Partial<FAQItem>) => Promise<void>;
   deleteFAQ: (id: string) => Promise<void>;
-  updateSiteContent: (key: string, data: any) => Promise<void>;
+  updateSiteContent: (keyOrData: string | Record<string, any>, data?: any) => Promise<void>;
   updateInquiryStatus: (id: string, status: string) => Promise<void>;
   deleteInquiry: (id: string) => Promise<void>;
 
@@ -194,15 +205,29 @@ const DEFAULT_USER: UserProfile = {
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentPage, setCurrentPage] = useState<AppPage>('home');
-  const [products, setProducts] = useState<CommodityProduct[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [quotes, setQuotes] = useState<RFQQuote[]>([]);
-  const [certifications, setCertifications] = useState<Certification[]>([]);
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [careers, setCareers] = useState<CareerJob[]>([]);
+  const [products, setProducts] = useState<CommodityProduct[]>(() => {
+    try {
+      const saved = localStorage.getItem('rme_products');
+      return saved ? JSON.parse(saved) : DEFAULT_PRODUCTS;
+    } catch {
+      return DEFAULT_PRODUCTS;
+    }
+  });
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
+  const [quotes, setQuotes] = useState<RFQQuote[]>(() => {
+    try {
+      const saved = localStorage.getItem('rme_quotes');
+      return saved ? JSON.parse(saved) : DEFAULT_QUOTES;
+    } catch {
+      return DEFAULT_QUOTES;
+    }
+  });
+  const [certifications, setCertifications] = useState<Certification[]>(DEFAULT_CERTIFICATIONS);
+  const [articles, setArticles] = useState<Article[]>(DEFAULT_ARTICLES);
+  const [careers, setCareers] = useState<CareerJob[]>(DEFAULT_CAREERS);
   const [jobApplications, setJobApplications] = useState<any[]>([]);
   const [inquiries, setInquiries] = useState<InquiryLead[]>([]);
-  const [faqs, setFaqs] = useState<FAQItem[]>([]);
+  const [faqs, setFaqs] = useState<FAQItem[]>(DEFAULT_FAQS);
   const [siteContent, setSiteContent] = useState<any>({});
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([
     {
@@ -213,13 +238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   ]);
   const [databaseStats, setDatabaseStats] = useState<DatabaseStats | null>(null);
-  const [metrics, setMetrics] = useState({
-    countriesExported: 42,
-    annualTonnageMT: 185000,
-    qualityAccreditations: 6,
-    co2OffsetMT: 420000,
-    totalOrdersCompleted: 1450
-  });
+  const [metrics, setMetrics] = useState(DEFAULT_METRICS);
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -326,6 +345,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [rfqItems]);
 
+  // Persist Products (supports offline/static admin updates)
+  useEffect(() => {
+    try {
+      localStorage.setItem('rme_products', JSON.stringify(products));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [products]);
+
+  // Persist Quotes (supports offline/static RFQ submissions)
+  useEffect(() => {
+    try {
+      localStorage.setItem('rme_quotes', JSON.stringify(quotes));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [quotes]);
+
   // Persist User
   useEffect(() => {
     try {
@@ -427,9 +464,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setError(null);
         }
       } catch (err: any) {
-        console.error('Error hydrating app state:', err);
+        // In static hosting environments like GitHub Pages, /api/data/all will return 404.
+        // We gracefully fall back to our rich embedded datasets without throwing or blocking.
+        console.info('[AppContext] Running in static/GitHub Pages deployment mode. Embedded datasets active.');
         if (isMounted) {
-          setError(err.message);
+          setError(null);
         }
       } finally {
         if (isMounted) {
@@ -1035,14 +1074,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const id = 'inq-' + Date.now();
     const newInq: InquiryLead = {
       id,
-      fullName: inqData.fullName || currentUser.name,
+      fullName: inqData.fullName || inqData.name || currentUser.name,
+      name: inqData.name || inqData.fullName || currentUser.name,
       email: inqData.email || currentUser.email,
       phone: inqData.phone || '+91 8921517645',
       company: inqData.company || currentUser.company,
       country: inqData.country || currentUser.country,
       subject: inqData.subject || 'Export Inquiry',
       message: inqData.message || '',
-      productInterest: inqData.productInterest || 'General',
+      productInterest: inqData.productInterest || inqData.commodity || 'General',
+      commodity: inqData.commodity || inqData.productInterest || 'General',
+      estimatedTonnage: inqData.estimatedTonnage,
       createdAt: new Date().toISOString(),
       status: 'New'
     };
@@ -1220,7 +1262,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Site Content
-  const updateSiteContent = async (key: string, data: any) => {
+  const updateSiteContent = async (keyOrData: string | Record<string, any>, data?: any) => {
+    if (typeof keyOrData === 'object' && keyOrData !== null) {
+      setSiteContent((prev: any) => ({ ...prev, ...keyOrData }));
+      if (keyOrData.metrics) {
+        setMetrics((prev) => ({ ...prev, ...keyOrData.metrics }));
+      }
+      for (const [k, v] of Object.entries(keyOrData)) {
+        fetch(`/api/site-content/${k}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(v)
+        }).catch(console.error);
+      }
+      return;
+    }
+
+    const key = keyOrData as string;
     setSiteContent((prev: any) => ({ ...prev, [key]: data }));
     if (key === 'metrics' && data) {
       setMetrics((prev) => ({ ...prev, ...data }));

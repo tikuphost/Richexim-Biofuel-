@@ -104,7 +104,7 @@ export const ArticlesTab: React.FC = () => {
     };
 
     if (editingArticle) {
-      await updateArticle(articlePayload);
+      await updateArticle(editingArticle.id, articlePayload);
     } else {
       await addArticle(articlePayload);
     }

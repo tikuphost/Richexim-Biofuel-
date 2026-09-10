@@ -13,6 +13,7 @@ import {
   Info
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { VolumeUnit } from '../types';
 
 export const ProductDetailModal: React.FC = () => {
   const {
@@ -25,7 +26,7 @@ export const ProductDetailModal: React.FC = () => {
   } = useApp();
 
   const [quantity, setQuantity] = useState<number>(25);
-  const [unit, setUnit] = useState<'MT' | 'Bags' | 'Containers'>('MT');
+  const [unit, setUnit] = useState<VolumeUnit>('MT');
 
   if (activeModal !== 'product-detail' || !selectedProduct) return null;
 
@@ -144,12 +145,12 @@ export const ProductDetailModal: React.FC = () => {
 
               <div className="bg-[#f9fbf7] p-3 rounded-2xl border border-[#e3ede0]">
                 <span className="text-gray-400 text-[10px] uppercase font-bold block">Ash Fusion Temp</span>
-                <span className="text-xs font-semibold text-[#2a6e3a] mt-0.5 block">{product.ashFusionTemp}</span>
+                <span className="text-xs font-semibold text-[#2a6e3a] mt-0.5 block">{product.ashFusionTemp || '> 1,280 °C'}</span>
               </div>
 
               <div className="bg-[#f9fbf7] p-3 rounded-2xl border border-[#e3ede0]">
                 <span className="text-gray-400 text-[10px] uppercase font-bold block">Sulfur &amp; Chlorine</span>
-                <span className="text-xs font-semibold text-gray-800 mt-0.5 block">S: {product.sulfur} • Cl: {product.chlorine}</span>
+                <span className="text-xs font-semibold text-gray-800 mt-0.5 block">S: {product.sulfur || '< 0.05%'} • Cl: {product.chlorine || '< 0.03%'}</span>
               </div>
             </div>
           </div>

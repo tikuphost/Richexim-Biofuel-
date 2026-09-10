@@ -1,6 +1,6 @@
 export type IncotermType = 'FOB' | 'CIF' | 'CFR' | 'EXW' | 'DAP';
-export type VolumeUnit = 'MT' | 'Containers (20ft FCL)' | 'Containers (40ft HC)' | 'Metric Tons (Loose Bulk)' | 'Bags (25/50kg)';
-export type QuoteStatus = 'Pending Admin Price' | 'Pending' | 'Quoted' | 'Negotiating' | 'Confirmed' | 'Shipped' | 'Completed';
+export type VolumeUnit = 'MT' | 'Containers (20ft FCL)' | 'Containers (40ft HC)' | 'Metric Tons (Loose Bulk)' | 'Bags (25/50kg)' | 'Containers' | 'Bags';
+export type QuoteStatus = 'Pending Admin Price' | 'Pending' | 'Quoted' | 'Negotiating' | 'Confirmed' | 'Shipped' | 'Completed' | 'Proforma Issued' | 'Accepted' | 'Rejected';
 export type UserRole = 'Admin' | 'Sales Manager' | 'Logistics Coordinator' | 'Verified Buyer' | 'Guest';
 export type AppPage = 'home' | 'about' | 'products' | 'blog' | 'quality' | 'careers' | 'contact' | 'faq' | 'admin';
 
@@ -20,6 +20,10 @@ export interface CommodityProduct {
   fixedCarbon?: string;
   volatileMatter?: string;
   particleSize?: string;
+  ashFusionTemp?: string;
+  sulfur?: string;
+  chlorine?: string;
+  stockStatus?: 'In Stock' | 'Limited Availability' | 'Pre-Order / Advance Allocation';
   minOrderQty: number; // in MT
   basePriceUSD: number; // per MT
   packagingOptions: string[];
@@ -139,6 +143,7 @@ export interface JobApplication {
 export interface InquiryLead {
   id: string;
   fullName: string;
+  name?: string; // alias
   email: string;
   phone: string;
   company: string;
@@ -146,6 +151,8 @@ export interface InquiryLead {
   subject: string;
   message: string;
   productInterest: string;
+  commodity?: string;
+  estimatedTonnage?: string | number;
   createdAt: string;
   status: 'New' | 'Contacted' | 'In Progress' | 'Converted';
 }
@@ -157,6 +164,7 @@ export interface ChatSession {
   customerEmail: string;
   customerCompany: string;
   customerCountry: string;
+  targetPort?: string;
   status: 'active' | 'waiting_agent' | 'closed' | 'resolved';
   priority: 'low' | 'normal' | 'urgent';
   tags: string[];

@@ -179,7 +179,7 @@ export const ProductManagementTab: React.FC = () => {
     };
 
     if (editingProduct) {
-      await updateProduct(productPayload);
+      await updateProduct(editingProduct.id, productPayload);
     } else {
       await addProduct(productPayload);
     }
@@ -372,7 +372,7 @@ export const ProductManagementTab: React.FC = () => {
                     <td className="px-4 py-3.5">
                       <button
                         type="button"
-                        onClick={() => updateProductStock(p.id, !p.inStock)}
+                        onClick={() => updateProductStock(p.id, !p.inStock ? 'In Stock' : 'Out of Stock')}
                         className={`text-[10px] font-bold px-2.5 py-1 rounded-full cursor-pointer transition flex items-center gap-1 ${
                           p.inStock
                             ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-200'

@@ -1,0 +1,6 @@
+{
+  "name": "Richmount Exim",
+  "description": "Enterprise export and supply chain portal for Richmount Exim (Richexim Group) specializing in industrial biomass, green fuels, and activated carbon with proforma RFQ calculator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

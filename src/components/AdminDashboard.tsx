@@ -56,6 +56,7 @@ export type AdminTabId =
   | 'quality'
   | 'articles'
   | 'careers'
+  | 'applications'
   | 'faqs'
   | 'chat'
   | 'inquiries'
@@ -1294,7 +1295,7 @@ export const AdminDashboard: React.FC = () => {
                             </td>
                             <td className="py-3 px-3">
                               <select
-                                value={p.stockStatus}
+                                value={p.stockStatus || (p.inStock ? 'In Stock' : 'Pre-Order')}
                                 onChange={(e: any) => updateProductStock(p.id, e.target.value)}
                                 className="bg-white border border-gray-200 rounded px-2 py-1 text-[11px] font-semibold cursor-pointer"
                               >
@@ -1432,7 +1433,7 @@ export const AdminDashboard: React.FC = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 py-2 px-3 bg-white rounded-xl border border-gray-100 text-[11px] mb-2">
                           <div>
                             <span className="text-gray-400 block">Contact Name:</span>
-                            <strong className="text-gray-800">{inq.name}</strong>
+                            <strong className="text-gray-800">{inq.fullName || inq.name}</strong>
                           </div>
                           <div>
                             <span className="text-gray-400 block">Email:</span>
@@ -1448,7 +1449,7 @@ export const AdminDashboard: React.FC = () => {
                           </div>
                         </div>
                         <p className="text-gray-700 font-medium text-xs">
-                          Target Commodity: <span className="text-[#2a6e3a] font-bold">{inq.commodity}</span> • Estimated Requirement: <strong>{inq.estimatedTonnage}</strong>
+                          Target Commodity: <span className="text-[#2a6e3a] font-bold">{inq.productInterest || inq.commodity}</span> • Estimated Requirement: <strong>{inq.estimatedTonnage || 'Full Container Load (FCL)'}</strong>
                         </p>
                         <p className="text-gray-600 mt-1 italic bg-[#eef5eb] p-2.5 rounded-lg border border-[#e0ebd9]">
                           "{inq.message}"

@@ -27,10 +27,12 @@ export const SupportSection: React.FC = () => {
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await submitInquiry({
+      fullName: name,
       name,
       company,
       email,
       phone,
+      productInterest: commodity,
       commodity,
       estimatedTonnage,
       message

@@ -81,7 +81,7 @@ export const CertificationsTab: React.FC = () => {
     };
 
     if (editingCert) {
-      await updateCertification(certPayload);
+      await updateCertification(editingCert.id, certPayload);
     } else {
       await addCertification(certPayload);
     }
