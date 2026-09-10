@@ -67,7 +67,7 @@ export function getDatabaseStats() {
 
   const tableCounts: Record<string, number> = {};
   if (dbInstance) {
-    const tables = ['products', 'categories', 'quotes', 'certifications', 'articles', 'careers', 'inquiries', 'chat_messages', 'chat_sessions'];
+    const tables = ['products', 'categories', 'quotes', 'certifications', 'articles', 'careers', 'inquiries', 'chat_messages', 'chat_sessions', 'faqs', 'site_content'];
     for (const table of tables) {
       try {
         const res = dbInstance.exec(`SELECT COUNT(*) as count FROM ${table}`);
@@ -274,6 +274,19 @@ function runMigrations(db: Database) {
       canonicalUrl TEXT,
       updatedAt TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS faqs (
+      id TEXT PRIMARY KEY,
+      category TEXT NOT NULL,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      tags TEXT -- JSON array
+    );
+
+    CREATE TABLE IF NOT EXISTS site_content (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   // Safe migrations for chat_messages columns
@@ -297,6 +310,20 @@ function runMigrations(db: Database) {
   const seoCount = (seoRes.length > 0 && seoRes[0].values.length > 0) ? Number(seoRes[0].values[0][0]) : 0;
   if (seoCount === 0) {
     seedSEOMetadata(db);
+  }
+
+  // Ensure FAQs are seeded
+  const faqRes = db.exec('SELECT COUNT(*) as count FROM faqs');
+  const faqCount = (faqRes.length > 0 && faqRes[0].values.length > 0) ? Number(faqRes[0].values[0][0]) : 0;
+  if (faqCount === 0) {
+    seedFAQs(db);
+  }
+
+  // Ensure Site Content is seeded
+  const scRes = db.exec('SELECT COUNT(*) as count FROM site_content');
+  const scCount = (scRes.length > 0 && scRes[0].values.length > 0) ? Number(scRes[0].values[0][0]) : 0;
+  if (scCount === 0) {
+    seedSiteContent(db);
   }
 
   // Ensure Job Applications are seeded
@@ -1548,3 +1575,115 @@ function seedChatSessions(db: Database) {
     `, [m.id, m.sessionId, m.sender, m.senderName, m.senderAvatar, m.message, m.text, m.timestamp, m.read, m.attachments]);
   }
 }
+
+function seedFAQs(db: Database) {
+  const initialFaqs = [
+    {
+      id: 'faq-1',
+      category: 'Incoterms & Shipping',
+      question: 'Which international trade Incoterms do you support for export contracts?',
+      answer: 'We routinely issue commercial contracts under Incoterms 2020 including CIF (Cost, Insurance & Freight), CFR (Cost & Freight), FOB (Free On Board Nhava Sheva / Cochin / Mundra ports), EXW (Ex-Works factory gate), and DAP (Delivered at Place) for select European and GCC industrial terminals. Our maritime chartering desk manages containerized FCL and breakbulk vessel fixtures.',
+      tags: JSON.stringify(['Incoterms', 'CIF', 'FOB', 'Maritime', 'JNPT'])
+    },
+    {
+      id: 'faq-2',
+      category: 'Packaging & MOQ',
+      question: 'What is the Minimum Order Quantity (MOQ) for international container shipments?',
+      answer: 'Our standard export MOQ is 1 x 20ft FCL (approximately 18 to 22 Metric Tons depending on commodity density and bag specification) or 1 x 40ft HC FCL (approx. 25 to 28 MT). For trial industrial boiler testing and laboratory evaluations, palletized LCL air/sea sample consignments can be arranged upon commercial request.',
+      tags: JSON.stringify(['MOQ', 'FCL', 'Container', 'Tonnage', 'Samples'])
+    },
+    {
+      id: 'faq-3',
+      category: 'Quality & Lab COA',
+      question: 'What laboratory testing and inspection certificates accompany every export shipment?',
+      answer: 'Every export container lot is provided with an official Certificate of Analysis (COA) containing bomb calorimetry (ASTM D5865), proximate analysis (moisture, ash content, volatile matter, fixed carbon), and ultimate elemental analysis (C, H, N, S, O). We offer independent pre-shipment sampling and testing by globally recognized surveyors (SGS, Bureau Veritas, or Intertek), accompanied by Phytosanitary Fumigation certificates and Chamber of Commerce Legalized Certificates of Origin.',
+      tags: JSON.stringify(['COA', 'ASTM', 'SGS', 'Calorific', 'Fumigation'])
+    },
+    {
+      id: 'faq-4',
+      category: 'Custom Formulations',
+      question: 'Can you formulate custom biomass fuel blends for specific industrial boiler designs?',
+      answer: 'Yes. Our specialized blending facility calibrates particle sizes (5mm to 90mm), gross calorific value (3,800 to 7,500 kcal/kg), and high ash fusion temperatures (>1280°C) tailored specifically for FBC (Fluidized Bed Combustion), AFBC, CFBC, and Stoker industrial boilers. Blending saw-dust, groundnut husk, and torrefied bio-coal prevents clinkering and boiler tube slagging.',
+      tags: JSON.stringify(['Boilers', 'AFBC', 'CFBC', 'Slagging', 'Calorific'])
+    },
+    {
+      id: 'faq-5',
+      category: 'Payment & L/C',
+      question: 'What are standard international commercial payment terms for export orders?',
+      answer: 'Our primary export payment structures are: 1) 30% Advance T/T upon contract signing with 70% against emailed non-negotiable Bill of Lading (B/L) and SGS inspection certificate, or 2) 100% Irrevocable Confirmed Letter of Credit (L/C) at Sight from prime international tier-1 banks conforming to ICC UCP 600 regulations.',
+      tags: JSON.stringify(['Payment', 'Letter of Credit', 'T/T', 'Trade Finance', 'UCP 600'])
+    },
+    {
+      id: 'faq-6',
+      category: 'Packaging & MOQ',
+      question: 'What export packaging configurations are available for pellets and briquettes?',
+      answer: 'We provide heavy-duty export packaging designed to withstand oceanic humidity: 1) 1,000 kg UV-stabilized PP Jumbo Bags with bottom discharge spouts and moisture barrier liners, 2) 25 kg / 50 kg multi-wall PP woven bags on heat-treated ISPM-15 wooden pallets, 3) 15 kg PE retail-ready transparent bags with barcode labelling, and 4) Full container bulk liner bags for mechanized pneumatic discharge.',
+      tags: JSON.stringify(['Packaging', 'Jumbo Bags', 'ISPM-15', 'Pallets', 'Bulk'])
+    },
+    {
+      id: 'faq-7',
+      category: 'EU Regulations',
+      question: 'Are your biomass fuels compliant with EU CBAM (Carbon Border Adjustment Mechanism) & EUDR?',
+      answer: 'Yes. All Richmount Exim solid biofuels are sourced from certified agricultural residuals and sawmill co-products without deforestation risk. We provide comprehensive carbon accounting dossiers specifying embedded emissions data per Metric Ton, ensuring seamless compliance with European Union CBAM transitional registries and EUDR timber traceability standards.',
+      tags: JSON.stringify(['CBAM', 'EUDR', 'Carbon Footprint', 'Decarbonization', 'Europe'])
+    },
+    {
+      id: 'faq-8',
+      category: 'Incoterms & Shipping',
+      question: 'What is the standard production lead time and maritime transit duration?',
+      answer: 'Standard manufacturing and port staging lead time is 7 to 12 business days from confirmed order / operative L/C. Ocean transit from Nhava Sheva (JNPT Mumbai) is approximately 18–24 days to Western European ports (Rotterdam, Antwerp, Hamburg), 4–6 days to GCC ports (Jebel Ali, Dammam), and 10–14 days to Southeast Asian terminals (Singapore, Port Klang).',
+      tags: JSON.stringify(['Lead Time', 'Transit', 'Shipping', 'Rotterdam', 'Jebel Ali'])
+    }
+  ];
+
+  for (const f of initialFaqs) {
+    db.run(
+      'INSERT OR REPLACE INTO faqs (id, category, question, answer, tags) VALUES (?, ?, ?, ?, ?)',
+      [f.id, f.category, f.question, f.answer, f.tags]
+    );
+  }
+}
+
+function seedSiteContent(db: Database) {
+  const initialHeroSlides = [
+    {
+      badge: 'Powering Industries with Sustainable Energy',
+      title: 'Industrial Biomass & Green Bio-Fuels',
+      sub: 'Manufacturers, Processors, Suppliers & Exporters of High-Calorific Clean Energy Alternatives.',
+      highlight: 'Replace Indonesian thermal coal cleanly with 4,200 – 8,000 kcal/kg energy density and zero sulfur emissions.',
+      ctaText: 'Build Proforma RFQ',
+      secondaryText: 'Explore Commodity Catalog'
+    },
+    {
+      badge: 'Tailored Combustion Engineering',
+      title: 'Customized Biomass Fuel Blends',
+      sub: 'Calibrated formulations engineered specifically for your boiler combustion parameters.',
+      highlight: 'Optimized for FBC, AFBC, CFBC, Stoker & Rotary Kilns. High ash fusion temperature (>1280°C) prevents bed clinkering.',
+      ctaText: 'Formulate Custom Blend',
+      secondaryText: 'View Boiler Specs'
+    },
+    {
+      badge: 'Metallurgical & Filtration Grade',
+      title: 'Coconut Charcoal & Activated Carbon',
+      sub: '7,500 – 8,000 kcal/kg Smokeless Briquettes & Steam-Activated Adsorption Media.',
+      highlight: 'Supplying 25,000 MT foundry chips for automotive castings and iodine 1,150+ PAC for water & sugar refining.',
+      ctaText: 'Inspect Technical Specs',
+      secondaryText: 'Accreditation Lab'
+    }
+  ];
+
+  const initialCompanyInfo = {
+    groupName: 'Richexim Group',
+    foundingYear: '2014',
+    hqAddress: 'Richmount Tower, Export Promotion Industrial Park, Kochi / Mumbai Port Hub, India',
+    phone: '+91 (0) 22 6890 4400',
+    email: 'exports@richmount-exim.com',
+    whatsapp: '+91 98401 23456',
+    tagline: 'Leading Global Biomass Energy & Clean Carbon Exporters',
+    mission: 'Empowering global heavy industries to decarbonize steam and metallurgical processes with audited, zero-deforestation solid bio-commodities.'
+  };
+
+  db.run('INSERT OR REPLACE INTO site_content (key, value) VALUES (?, ?)', ['heroSlides', JSON.stringify(initialHeroSlides)]);
+  db.run('INSERT OR REPLACE INTO site_content (key, value) VALUES (?, ?)', ['companyInfo', JSON.stringify(initialCompanyInfo)]);
+}
+

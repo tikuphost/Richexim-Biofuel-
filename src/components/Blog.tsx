@@ -338,10 +338,12 @@ export const Blog: React.FC = () => {
 
   const filteredPosts = blogPosts.filter((post) => {
     const matchesCategory = selectedCategory === 'All' || post.category === selectedCategory;
+    const query = (searchQuery || '').toLowerCase();
     const matchesSearch =
-      post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.excerpt.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.author.name.toLowerCase().includes(searchQuery.toLowerCase());
+      !query ||
+      (post.title || '').toLowerCase().includes(query) ||
+      (post.excerpt || '').toLowerCase().includes(query) ||
+      (post.author?.name || '').toLowerCase().includes(query);
     return matchesCategory && matchesSearch;
   });
 

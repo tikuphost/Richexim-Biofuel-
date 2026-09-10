@@ -20,10 +20,10 @@ import {
 import { useApp } from '../context/AppContext';
 
 export const HeroShowcase: React.FC = () => {
-  const { setActiveModal, metrics } = useApp();
+  const { setActiveModal, metrics, siteContent } = useApp();
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  const slides = [
+  const defaultSlides = [
     {
       badge: 'Powering Industries with Sustainable Energy',
       title: 'Industrial Biomass & Green Bio-Fuels',
@@ -64,6 +64,14 @@ export const HeroShowcase: React.FC = () => {
       bgGradient: 'from-[#132c18] via-[#1b4324] to-[#275d34]'
     }
   ];
+
+  const slides = (siteContent?.heroSlides && siteContent.heroSlides.length > 0)
+    ? siteContent.heroSlides.map((s, idx) => ({
+        ...s,
+        ctaAction: () => setActiveModal('rfq'),
+        bgGradient: idx === 0 ? 'from-[#173e21] via-[#1b4d27] to-[#255e34]' : idx === 1 ? 'from-[#1a3826] via-[#234e32] to-[#1e522d]' : 'from-[#132c18] via-[#1b4324] to-[#275d34]'
+      }))
+    : defaultSlides;
 
   useEffect(() => {
     const timer = setInterval(() => {

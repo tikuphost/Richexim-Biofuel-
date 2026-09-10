@@ -141,12 +141,12 @@ export const Header: React.FC = () => {
             {/* Direct Admin Console Trigger */}
             <button
               type="button"
-              onClick={() => setIsAdminOpen(!isAdminOpen)}
-              className={`flex items-center gap-1 text-[10px] sm:text-[11px] px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full font-medium transition cursor-pointer ${
-                isAdminOpen || currentUser.role === 'Admin'
-                  ? 'bg-[#f5b342] text-[#172e18] font-semibold'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
+              onClick={() => {
+                switchRole('Admin');
+                setIsAdminOpen(true);
+                setCurrentPage('admin');
+              }}
+              className="flex items-center gap-1 text-[10px] sm:text-[11px] px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full font-bold transition cursor-pointer bg-[#f5b342] hover:bg-[#e2a230] text-[#172e18] shadow-xs select-none"
             >
               <Lock className="w-2.5 sm:w-3 h-2.5 sm:h-3" />
               <span className="hidden sm:inline">Admin Console</span>

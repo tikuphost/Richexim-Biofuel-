@@ -86,7 +86,7 @@ const FAQ_DATA: FAQItem[] = [
 ];
 
 export const FAQPage: React.FC = () => {
-  const { setCurrentPage, setActiveModal } = useApp();
+  const { setCurrentPage, setActiveModal, faqs } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -102,7 +102,9 @@ export const FAQPage: React.FC = () => {
     'EU Regulations'
   ];
 
-  const filteredFaqs = FAQ_DATA.filter((item) => {
+  const activeFaqList = (faqs && faqs.length > 0) ? faqs : FAQ_DATA;
+
+  const filteredFaqs = activeFaqList.filter((item) => {
     const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
     const matchesSearch =
       searchQuery.trim() === '' ||

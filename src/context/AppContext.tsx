@@ -18,7 +18,8 @@ import {
   VolumeUnit,
   AppPage,
   PageSEOMetadata,
-  SEOMetadataMap
+  SEOMetadataMap,
+  FAQItem
 } from '../types';
 import { DEFAULT_SEO_CONFIGS, applyDocumentSEO } from '../utils/seo';
 
@@ -68,6 +69,8 @@ interface AppContextType {
   certifications: Certification[];
   articles: Article[];
   careers: CareerJob[];
+  faqs: FAQItem[];
+  siteContent: any;
   jobApplications: any[];
   inquiries: InquiryLead[];
   chatHistory: ChatMessage[];
@@ -155,6 +158,23 @@ interface AppContextType {
   updateJobApplicationStatus: (id: string, status: string) => Promise<void>;
   refreshDatabaseStats: () => Promise<void>;
 
+  // Additional Admin Section CRUD
+  addCertification: (cert: Partial<Certification>) => Promise<void>;
+  updateCertification: (id: string, cert: Partial<Certification>) => Promise<void>;
+  deleteCertification: (id: string) => Promise<void>;
+  addCareer: (job: Partial<CareerJob>) => Promise<void>;
+  updateCareer: (id: string, job: Partial<CareerJob>) => Promise<void>;
+  deleteCareer: (id: string) => Promise<void>;
+  addArticle: (art: Partial<Article>) => Promise<void>;
+  updateArticle: (id: string, art: Partial<Article>) => Promise<void>;
+  deleteArticle: (id: string) => Promise<void>;
+  addFAQ: (faq: Partial<FAQItem>) => Promise<void>;
+  updateFAQ: (id: string, faq: Partial<FAQItem>) => Promise<void>;
+  deleteFAQ: (id: string) => Promise<void>;
+  updateSiteContent: (key: string, data: any) => Promise<void>;
+  updateInquiryStatus: (id: string, status: string) => Promise<void>;
+  deleteInquiry: (id: string) => Promise<void>;
+
   // Centralized SEO Metadata
   seoMetadata: SEOMetadataMap;
   updateSEOMetadata: (pageKey: string, data: Partial<PageSEOMetadata>) => Promise<boolean>;
@@ -182,6 +202,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [careers, setCareers] = useState<CareerJob[]>([]);
   const [jobApplications, setJobApplications] = useState<any[]>([]);
   const [inquiries, setInquiries] = useState<InquiryLead[]>([]);
+  const [faqs, setFaqs] = useState<FAQItem[]>([]);
+  const [siteContent, setSiteContent] = useState<any>({});
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([
     {
       id: 'welcome-initial',
@@ -239,7 +261,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Chat & Admin
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState<boolean>(() => {
+    try {
+      const savedUser = localStorage.getItem('rme_user_profile');
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        if (parsed.role === 'Admin') return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  });
 
   // Dual-Persona Chat Session States
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -374,6 +407,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setCareers(data.careers || []);
           setJobApplications(data.jobApplications || []);
           setInquiries(data.inquiries || []);
+          setFaqs(data.faqs || []);
+          if (data.siteContent) {
+            setSiteContent(data.siteContent);
+          }
           setChatHistory(data.chatHistory || []);
           if (data.chatSessions && data.chatSessions.length > 0) {
             setChatSessions(data.chatSessions);
@@ -558,6 +595,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role,
       name: role === 'Admin' ? 'Executive Director (Admin)' : role === 'Sales Manager' ? 'Vikramaditya Rao (Sales)' : role === 'Logistics Coordinator' ? 'Ananya Sharma (Logistics)' : prev.name
     }));
+    if (role === 'Admin') {
+      setIsAdminOpen(true);
+      setCurrentPage('admin');
+    } else {
+      setIsAdminOpen(false);
+      if (currentPage === 'admin') {
+        setCurrentPage('home');
+      }
+    }
   };
 
   const refreshChatSessions = async () => {
@@ -1041,6 +1087,166 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Certifications CRUD
+  const addCertification = async (cert: Partial<Certification>) => {
+    const id = cert.id || 'cert-' + Date.now();
+    const newCert: Certification = {
+      id,
+      name: cert.name || 'Quality Accreditation',
+      issuer: cert.issuer || 'International Accreditation Forum',
+      code: cert.code || 'ISO-9001',
+      issueDate: cert.issueDate || new Date().toISOString().split('T')[0],
+      validUntil: cert.validUntil || '2028-12-31',
+      accreditedBody: cert.accreditedBody || 'IAF Multilateral',
+      category: cert.category || 'Quality',
+      description: cert.description || '',
+      badgeCode: cert.badgeCode || 'GLOBAL_AUDIT_PASS',
+      documentNumber: cert.documentNumber || `RME/QA/${Math.floor(1000 + Math.random() * 9000)}`
+    };
+    setCertifications((prev) => [...prev, newCert]);
+    fetch('/api/certifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newCert)
+    }).catch(console.error);
+  };
+
+  const updateCertification = async (id: string, cert: Partial<Certification>) => {
+    setCertifications((prev) => prev.map((c) => (c.id === id ? { ...c, ...cert } : c)));
+    const existing = certifications.find((c) => c.id === id);
+    if (existing) {
+      fetch(`/api/certifications/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...existing, ...cert })
+      }).catch(console.error);
+    }
+  };
+
+  const deleteCertification = async (id: string) => {
+    setCertifications((prev) => prev.filter((c) => c.id !== id));
+    fetch(`/api/certifications/${id}`, { method: 'DELETE' }).catch(console.error);
+  };
+
+  // Careers CRUD
+  const addCareer = async (job: Partial<CareerJob>) => {
+    const id = job.id || 'job-' + Date.now();
+    const newJob: CareerJob = {
+      id,
+      title: job.title || 'Export Operations Specialist',
+      department: job.department || 'Export Logistics',
+      location: job.location || 'Mumbai / Hybrid',
+      type: job.type || 'Full-time',
+      experience: job.experience || '3 - 6 Years',
+      description: job.description || '',
+      requirements: job.requirements || ["Bachelor's degree in International Trade", 'Proficiency in Incoterms 2020'],
+      responsibilities: job.responsibilities || ['Manage vessel schedules', 'Liaise with customs brokers'],
+      active: job.active !== undefined ? job.active : true
+    };
+    setCareers((prev) => [...prev, newJob]);
+    fetch('/api/careers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newJob)
+    }).catch(console.error);
+  };
+
+  const updateCareer = async (id: string, job: Partial<CareerJob>) => {
+    setCareers((prev) => prev.map((j) => (j.id === id ? { ...j, ...job } : j)));
+    const existing = careers.find((j) => j.id === id);
+    if (existing) {
+      fetch(`/api/careers/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...existing, ...job })
+      }).catch(console.error);
+    }
+  };
+
+  const deleteCareer = async (id: string) => {
+    setCareers((prev) => prev.filter((j) => j.id !== id));
+    fetch(`/api/careers/${id}`, { method: 'DELETE' }).catch(console.error);
+  };
+
+  // Articles CRUD
+  const addArticle = async (art: Partial<Article>) => {
+    await submitArticle(art);
+  };
+
+  const updateArticle = async (id: string, art: Partial<Article>) => {
+    setArticles((prev) => prev.map((a) => (a.id === id ? { ...a, ...art } : a)));
+    fetch(`/api/articles/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(art)
+    }).catch(console.error);
+  };
+
+  const deleteArticle = async (id: string) => {
+    setArticles((prev) => prev.filter((a) => a.id !== id));
+    fetch(`/api/articles/${id}`, { method: 'DELETE' }).catch(console.error);
+  };
+
+  // FAQs CRUD
+  const addFAQ = async (faq: Partial<FAQItem>) => {
+    const id = faq.id || 'faq-' + Date.now();
+    const newFaq: FAQItem = {
+      id,
+      category: faq.category || 'General',
+      question: faq.question || '',
+      answer: faq.answer || '',
+      tags: faq.tags || []
+    };
+    setFaqs((prev) => [...prev, newFaq]);
+    fetch('/api/faqs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newFaq)
+    }).catch(console.error);
+  };
+
+  const updateFAQ = async (id: string, faq: Partial<FAQItem>) => {
+    setFaqs((prev) => prev.map((f) => (f.id === id ? { ...f, ...faq } : f)));
+    fetch(`/api/faqs/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(faq)
+    }).catch(console.error);
+  };
+
+  const deleteFAQ = async (id: string) => {
+    setFaqs((prev) => prev.filter((f) => f.id !== id));
+    fetch(`/api/faqs/${id}`, { method: 'DELETE' }).catch(console.error);
+  };
+
+  // Site Content
+  const updateSiteContent = async (key: string, data: any) => {
+    setSiteContent((prev: any) => ({ ...prev, [key]: data }));
+    if (key === 'metrics' && data) {
+      setMetrics((prev) => ({ ...prev, ...data }));
+    }
+    fetch(`/api/site-content/${key}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }).catch(console.error);
+  };
+
+  // Inquiries status & deletion
+  const updateInquiryStatus = async (id: string, status: string) => {
+    setInquiries((prev) => prev.map((inq) => (inq.id === id ? { ...inq, status: status as any } : inq)));
+    fetch(`/api/inquiries/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    }).catch(console.error);
+  };
+
+  const deleteInquiry = async (id: string) => {
+    setInquiries((prev) => prev.filter((inq) => inq.id !== id));
+    fetch(`/api/inquiries/${id}`, { method: 'DELETE' }).catch(console.error);
+  };
+
   const refreshDatabaseStats = async () => {
     try {
       const res = await fetch('/api/database/stats');
@@ -1106,6 +1312,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         certifications,
         articles,
         careers,
+        faqs,
+        siteContent,
         jobApplications,
         inquiries,
         chatHistory,
@@ -1172,6 +1380,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitJobApplication,
         updateJobApplicationStatus,
         refreshDatabaseStats,
+        addCertification,
+        updateCertification,
+        deleteCertification,
+        addCareer,
+        updateCareer,
+        deleteCareer,
+        addArticle,
+        updateArticle,
+        deleteArticle,
+        addFAQ,
+        updateFAQ,
+        deleteFAQ,
+        updateSiteContent,
+        updateInquiryStatus,
+        deleteInquiry,
         seoMetadata,
         updateSEOMetadata,
         resetSEOMetadata

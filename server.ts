@@ -57,24 +57,27 @@ app.get('/api/database/backup/create', async (req: Request, res: Response) => {
   }
 });
 
+// Helper to query and map columns to objects across endpoints
+function executeQuery(db: any, sql: string): any[] {
+  const res = db.exec(sql);
+  if (!res || res.length === 0) return [];
+  const columns = res[0].columns;
+  return res[0].values.map((row: any[]) => {
+    const obj: Record<string, any> = {};
+    columns.forEach((col: string, i: number) => {
+      obj[col] = row[i];
+    });
+    return obj;
+  });
+}
+
 // Hydrated Full App State (Zero-flicker architecture)
 app.get('/api/data/all', async (req: Request, res: Response) => {
   try {
     const db = await getDatabase();
 
     // Helper to query and map columns to objects
-    const queryAll = (sql: string) => {
-      const res = db.exec(sql);
-      if (res.length === 0) return [];
-      const columns = res[0].columns;
-      return res[0].values.map((row) => {
-        const obj: Record<string, any> = {};
-        columns.forEach((col, i) => {
-          obj[col] = row[i];
-        });
-        return obj;
-      });
-    };
+    const queryAll = (sql: string) => executeQuery(db, sql);
 
     const categoriesRaw = queryAll('SELECT * FROM categories ORDER BY name ASC');
     const productsRaw = queryAll('SELECT * FROM products ORDER BY name ASC');
@@ -87,6 +90,8 @@ app.get('/api/data/all', async (req: Request, res: Response) => {
     const chatRaw = queryAll('SELECT * FROM chat_messages ORDER BY timestamp ASC');
     const chatSessionsRaw = queryAll('SELECT * FROM chat_sessions ORDER BY lastMessageTime DESC');
     const seoRaw = queryAll('SELECT * FROM seo_metadata');
+    const faqsRaw = queryAll('SELECT * FROM faqs ORDER BY id ASC');
+    const siteContentRaw = queryAll('SELECT * FROM site_content');
 
     // Parse JSON string fields safely
     const products = productsRaw.map((p) => ({
@@ -130,6 +135,20 @@ app.get('/api/data/all', async (req: Request, res: Response) => {
       seoMetadata[row.pageKey] = row;
     });
 
+    const faqs = faqsRaw.map((f) => ({
+      ...f,
+      tags: typeof f.tags === 'string' ? JSON.parse(f.tags || '[]') : (f.tags || [])
+    }));
+
+    const siteContent: Record<string, any> = {};
+    siteContentRaw.forEach((row: any) => {
+      try {
+        siteContent[row.key] = JSON.parse(row.value);
+      } catch {
+        siteContent[row.key] = row.value;
+      }
+    });
+
     const dbStats = getDatabaseStats();
 
     res.json({
@@ -139,6 +158,8 @@ app.get('/api/data/all', async (req: Request, res: Response) => {
       certifications: certsRaw,
       articles,
       careers,
+      faqs,
+      siteContent,
       jobApplications: applicationsRaw,
       inquiries: inquiriesRaw,
       chatHistory,
@@ -588,6 +609,231 @@ app.post('/api/inquiries', async (req: Request, res: Response) => {
 
     saveDatabaseToDisk();
     res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/inquiries/:id', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const { status } = req.body;
+    db.run('UPDATE inquiries SET status = ? WHERE id = ?', [status || 'Contacted', req.params.id]);
+    saveDatabaseToDisk();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/inquiries/:id', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    db.run('DELETE FROM inquiries WHERE id = ?', [req.params.id]);
+    saveDatabaseToDisk();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Certifications CRUD
+app.post('/api/certifications', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const c = req.body;
+    const id = c.id || 'cert-' + Date.now();
+    db.run(`
+      INSERT INTO certifications (id, name, issuer, code, issueDate, validUntil, accreditedBody, category, description, badgeCode, documentNumber)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id, c.name, c.issuer || '', c.code || '', c.issueDate || '', c.validUntil || '',
+      c.accreditedBody || '', c.category || 'Quality', c.description || '', c.badgeCode || '', c.documentNumber || ''
+    ]);
+    saveDatabaseToDisk();
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/certifications/:id', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const c = req.body;
+    db.run(`
+      UPDATE certifications SET
+        name = ?, issuer = ?, code = ?, issueDate = ?, validUntil = ?,
+        accreditedBody = ?, category = ?, description = ?, badgeCode = ?, documentNumber = ?
+      WHERE id = ?
+    `, [
+      c.name, c.issuer || '', c.code || '', c.issueDate || '', c.validUntil || '',
+      c.accreditedBody || '', c.category || 'Quality', c.description || '', c.badgeCode || '', c.documentNumber || '',
+      req.params.id
+    ]);
+    saveDatabaseToDisk();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/certifications/:id', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    db.run('DELETE FROM certifications WHERE id = ?', [req.params.id]);
+    saveDatabaseToDisk();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Careers Postings CRUD
+app.post('/api/careers', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const c = req.body;
+    const id = c.id || 'job-' + Date.now();
+    db.run(`
+      INSERT INTO careers (id, title, department, location, type, experience, description, requirements, responsibilities, active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id, c.title, c.department || 'International Trade', c.location || 'Mumbai / Hybrid',
+      c.type || 'Full-time', c.experience || '2 - 5 Years', c.description || '',
+      JSON.stringify(c.requirements || []), JSON.stringify(c.responsibilities || []),
+      c.active !== undefined ? (c.active ? 1 : 0) : 1
+    ]);
+    saveDatabaseToDisk();
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/careers/:id', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const c = req.body;
+    db.run(`
+      UPDATE careers SET
+        title = ?, department = ?, location = ?, type = ?, experience = ?,
+        description = ?, requirements = ?, responsibilities = ?, active = ?
+      WHERE id = ?
+    `, [
+      c.title, c.department, c.location, c.type, c.experience,
+      c.description, JSON.stringify(c.requirements || []), JSON.stringify(c.responsibilities || []),
+      c.active ? 1 : 0, req.params.id
+    ]);
+    saveDatabaseToDisk();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/careers/:id', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    db.run('DELETE FROM careers WHERE id = ?', [req.params.id]);
+    saveDatabaseToDisk();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// FAQs CRUD
+app.get('/api/faqs', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const rows = executeQuery(db, 'SELECT * FROM faqs ORDER BY id ASC');
+    const parsed = rows.map((r: any) => ({
+      ...r,
+      tags: typeof r.tags === 'string' ? JSON.parse(r.tags || '[]') : (r.tags || [])
+    }));
+    res.json(parsed);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/faqs', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const f = req.body;
+    const id = f.id || 'faq-' + Date.now();
+    db.run(`
+      INSERT INTO faqs (id, category, question, answer, tags)
+      VALUES (?, ?, ?, ?, ?)
+    `, [
+      id, f.category || 'General', f.question, f.answer,
+      JSON.stringify(f.tags || [])
+    ]);
+    saveDatabaseToDisk();
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/faqs/:id', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const f = req.body;
+    db.run(`
+      UPDATE faqs SET
+        category = ?, question = ?, answer = ?, tags = ?
+      WHERE id = ?
+    `, [
+      f.category, f.question, f.answer,
+      JSON.stringify(f.tags || []), req.params.id
+    ]);
+    saveDatabaseToDisk();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/faqs/:id', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    db.run('DELETE FROM faqs WHERE id = ?', [req.params.id]);
+    saveDatabaseToDisk();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Site Content / Homepage & Global Settings CRUD
+app.get('/api/site-content', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const rows = executeQuery(db, 'SELECT * FROM site_content');
+    const result: Record<string, any> = {};
+    rows.forEach((r: any) => {
+      try {
+        result[r.key] = JSON.parse(r.value);
+      } catch {
+        result[r.key] = r.value;
+      }
+    });
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/site-content/:key', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const key = req.params.key;
+    const valueStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    db.run('INSERT OR REPLACE INTO site_content (key, value) VALUES (?, ?)', [key, valueStr]);
+    saveDatabaseToDisk();
+    res.json({ success: true, key });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

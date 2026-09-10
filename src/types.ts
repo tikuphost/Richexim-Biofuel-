@@ -2,7 +2,7 @@ export type IncotermType = 'FOB' | 'CIF' | 'CFR' | 'EXW' | 'DAP';
 export type VolumeUnit = 'MT' | 'Containers (20ft FCL)' | 'Containers (40ft HC)' | 'Metric Tons (Loose Bulk)' | 'Bags (25/50kg)';
 export type QuoteStatus = 'Pending Admin Price' | 'Pending' | 'Quoted' | 'Negotiating' | 'Confirmed' | 'Shipped' | 'Completed';
 export type UserRole = 'Admin' | 'Sales Manager' | 'Logistics Coordinator' | 'Verified Buyer' | 'Guest';
-export type AppPage = 'home' | 'about' | 'products' | 'blog' | 'quality' | 'careers' | 'contact' | 'faq';
+export type AppPage = 'home' | 'about' | 'products' | 'blog' | 'quality' | 'careers' | 'contact' | 'faq' | 'admin';
 
 export interface CommodityProduct {
   id: string;
@@ -218,6 +218,35 @@ export interface PageSEOMetadata {
 
 export type SEOMetadataMap = Record<string, PageSEOMetadata>;
 
+export interface FAQItem {
+  id: string;
+  category: string;
+  question: string;
+  answer: string;
+  tags: string[];
+}
+
+export interface SiteHeroSlide {
+  id?: string;
+  badge: string;
+  title: string;
+  sub: string;
+  highlight: string;
+  ctaText: string;
+  secondaryText: string;
+}
+
+export interface SiteCompanyInfo {
+  groupName: string;
+  foundingYear: string;
+  hqAddress: string;
+  phone: string;
+  email: string;
+  whatsapp: string;
+  tagline: string;
+  mission: string;
+}
+
 export interface AppInitialData {
   products: CommodityProduct[];
   categories: Category[];
@@ -225,6 +254,12 @@ export interface AppInitialData {
   certifications: Certification[];
   articles: Article[];
   careers: CareerJob[];
+  faqs?: FAQItem[];
+  siteContent?: {
+    heroSlides?: SiteHeroSlide[];
+    companyInfo?: SiteCompanyInfo;
+    [key: string]: any;
+  };
   jobApplications?: JobApplication[];
   inquiries: InquiryLead[];
   chatHistory: ChatMessage[];
