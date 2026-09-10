@@ -21,11 +21,13 @@ import {
   Bell,
   UserCheck,
   Briefcase,
-  AlertCircle
+  AlertCircle,
+  MessageCircle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { RFQQuote, CommodityProduct } from '../types';
 import { SEOMetadataManagement } from './admin/SEOMetadataManagement';
+import { LiveChatInbox } from './admin/LiveChatInbox';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -33,6 +35,7 @@ export const AdminDashboard: React.FC = () => {
     products,
     inquiries,
     jobApplications,
+    chatSessions,
     updateQuoteStatus,
     priceQuoteByAdmin,
     updateProductPrice,
@@ -44,7 +47,7 @@ export const AdminDashboard: React.FC = () => {
     metrics
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'quotes' | 'pricing' | 'seo' | 'inquiries' | 'applications' | 'database'>('quotes');
+  const [activeTab, setActiveTab] = useState<'quotes' | 'pricing' | 'seo' | 'inquiries' | 'applications' | 'database' | 'chat'>('quotes');
   const [quoteSearch, setQuoteSearch] = useState('');
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -68,7 +71,10 @@ export const AdminDashboard: React.FC = () => {
   const pendingApplications = jobApplications.filter(
     (a) => a.status === 'Under Review' || a.status === 'New' || !a.status
   );
-  const totalAlerts = pendingQuotes.length + pendingApplications.length;
+  const waitingChatCount = (chatSessions || []).filter(
+    (s) => s.status === 'waiting_agent' || s.unreadAdminCount > 0
+  ).length;
+  const totalAlerts = pendingQuotes.length + pendingApplications.length + waitingChatCount;
 
   const openPricingForQuote = (q: RFQQuote) => {
     setPricingQuote(q);
@@ -282,6 +288,52 @@ export const AdminDashboard: React.FC = () => {
                             ))}
                           </div>
                         )}
+
+                        {/* Waiting Live Chat Sessions */}
+                        {waitingChatCount > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between text-[11px] font-bold text-[#1b4d27] uppercase tracking-wider">
+                              <span>Live Chats Awaiting Agent ({waitingChatCount})</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab('chat');
+                                  setShowAlertsDropdown(false);
+                                }}
+                                className="text-[#2a6e3a] hover:underline cursor-pointer"
+                              >
+                                Open Inbox →
+                              </button>
+                            </div>
+                            {chatSessions
+                              .filter((s) => s.status === 'waiting_agent' || s.unreadAdminCount > 0)
+                              .slice(0, 3)
+                              .map((s) => (
+                                <div
+                                  key={s.id}
+                                  className="p-2.5 bg-[#f9fbf7] hover:bg-[#f0f7eb] rounded-xl border border-[#e3ede0] transition text-xs"
+                                >
+                                  <div className="flex items-center justify-between font-bold text-[#172e18]">
+                                    <span>{s.customerName} ({s.customerCompany})</span>
+                                    <span className="text-[10px] text-red-600 font-bold">Needs Reply</span>
+                                  </div>
+                                  <div className="text-[11px] text-gray-500 mt-0.5 flex items-center justify-between">
+                                    <span className="truncate max-w-[200px]">{s.lastMessageText}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveTab('chat');
+                                        setShowAlertsDropdown(false);
+                                      }}
+                                      className="bg-[#1b4d27] hover:bg-[#2a6e3a] text-white text-[10px] font-bold px-2 py-0.5 rounded cursor-pointer"
+                                    >
+                                      Reply
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -407,6 +459,12 @@ export const AdminDashboard: React.FC = () => {
               badge: pendingQuotes.length > 0 ? `${pendingQuotes.length} new` : null,
               badgeColor: 'bg-[#f5b342] text-[#172e18]'
             },
+            {
+              id: 'chat',
+              label: `Live Chat Inbox (${chatSessions.length})`,
+              badge: waitingChatCount > 0 ? `${waitingChatCount} waiting` : null,
+              badgeColor: 'bg-red-500 text-white animate-pulse'
+            },
             { id: 'pricing', label: `FOB Price Tariffs (${products.length})` },
             { id: 'seo', label: 'SEO Metadata Management' },
             { id: 'inquiries', label: `Customer Leads (${inquiries.length})` },
@@ -437,6 +495,9 @@ export const AdminDashboard: React.FC = () => {
             </button>
           ))}
         </div>
+
+        {/* Tab: Live Chat Operations Desk */}
+        {activeTab === 'chat' && <LiveChatInbox />}
 
         {/* Tab 1: Commercial RFQ Management */}
         {activeTab === 'quotes' && (

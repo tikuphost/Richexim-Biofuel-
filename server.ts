@@ -85,6 +85,7 @@ app.get('/api/data/all', async (req: Request, res: Response) => {
     const inquiriesRaw = queryAll('SELECT * FROM inquiries ORDER BY createdAt DESC');
     const applicationsRaw = queryAll('SELECT * FROM job_applications ORDER BY submittedAt DESC');
     const chatRaw = queryAll('SELECT * FROM chat_messages ORDER BY timestamp ASC');
+    const chatSessionsRaw = queryAll('SELECT * FROM chat_sessions ORDER BY lastMessageTime DESC');
     const seoRaw = queryAll('SELECT * FROM seo_metadata');
 
     // Parse JSON string fields safely
@@ -115,7 +116,13 @@ app.get('/api/data/all', async (req: Request, res: Response) => {
 
     const chatHistory = chatRaw.map((m) => ({
       ...m,
-      suggestedPrompts: typeof m.suggestedPrompts === 'string' ? JSON.parse(m.suggestedPrompts || '[]') : m.suggestedPrompts
+      suggestedPrompts: typeof m.suggestedPrompts === 'string' ? JSON.parse(m.suggestedPrompts || '[]') : m.suggestedPrompts,
+      attachments: typeof m.attachments === 'string' ? JSON.parse(m.attachments || '[]') : (m.attachments || [])
+    }));
+
+    const chatSessions = chatSessionsRaw.map((s) => ({
+      ...s,
+      tags: typeof s.tags === 'string' ? JSON.parse(s.tags || '[]') : (s.tags || [])
     }));
 
     const seoMetadata: Record<string, any> = {};
@@ -135,6 +142,7 @@ app.get('/api/data/all', async (req: Request, res: Response) => {
       jobApplications: applicationsRaw,
       inquiries: inquiriesRaw,
       chatHistory,
+      chatSessions,
       databaseStats: dbStats,
       seoMetadata,
       metrics: {
@@ -670,6 +678,325 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       userMessage: { id: userMsgId, sender: 'user', text: message, timestamp: new Date().toISOString() },
       agentReply: { id: replyMsgId, sender: 'agent', senderName: 'Richexim Logistics Desk', text: replyText, timestamp: new Date().toISOString(), suggestedPrompts }
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== DUAL-PERSONA ASYNCHRONOUS CHAT REST API ====================
+
+// 1. List all Chat Sessions (for Admin Inbox)
+app.get('/api/chat/sessions', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const result = db.exec('SELECT * FROM chat_sessions ORDER BY lastMessageTime DESC');
+    if (result.length === 0) {
+      return res.json([]);
+    }
+    const cols = result[0].columns;
+    const sessions = result[0].values.map((row) => {
+      const s: any = {};
+      cols.forEach((col, idx) => { s[col] = row[idx]; });
+      s.tags = typeof s.tags === 'string' ? JSON.parse(s.tags || '[]') : (s.tags || []);
+      return s;
+    });
+    res.json(sessions);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Create or Initialize Chat Session (Storefront customer initiation)
+app.post('/api/chat/sessions', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const { contactIdentifier, customerName, customerEmail, customerCompany, customerCountry, initialMessage, tags } = req.body;
+    
+    // Check if session exists for this contactIdentifier
+    let sessionId = 'sess-' + Date.now();
+    let existingSession: any = null;
+
+    if (contactIdentifier) {
+      const checkRes = db.exec(`SELECT * FROM chat_sessions WHERE contactIdentifier = ? LIMIT 1`);
+      // sql.js exec with params via statement
+      const stmt = db.prepare('SELECT * FROM chat_sessions WHERE contactIdentifier = ?');
+      stmt.bind([contactIdentifier]);
+      if (stmt.step()) {
+        const row = stmt.getAsObject();
+        existingSession = {
+          ...row,
+          tags: typeof row.tags === 'string' ? JSON.parse(row.tags as string || '[]') : []
+        };
+        sessionId = row.id as string;
+      }
+      stmt.free();
+    }
+
+    const now = new Date().toISOString();
+
+    if (!existingSession) {
+      const assignedAgent = 'Sarah Jenkins (Senior Trade Desk)';
+      const initialStatus = 'waiting_agent';
+      const initialPriority = 'normal';
+      const parsedTags = JSON.stringify(tags || ['Storefront Inquiry', customerCompany || 'Direct Buyer']);
+      const lastText = initialMessage || 'Chat session initiated';
+
+      db.run(`
+        INSERT INTO chat_sessions (id, contactIdentifier, customerName, customerEmail, customerCompany, customerCountry, status, priority, tags, adminNotes, assignedAgent, lastMessageText, lastMessageTime, unreadAdminCount, unreadCustomerCount)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        sessionId,
+        contactIdentifier || customerEmail || `anon-${Date.now()}`,
+        customerName || 'Anonymous Buyer',
+        customerEmail || '',
+        customerCompany || 'Commercial Prospect',
+        customerCountry || 'International',
+        initialStatus,
+        initialPriority,
+        parsedTags,
+        'Session initiated from storefront chat widget.',
+        assignedAgent,
+        lastText,
+        now,
+        initialMessage ? 1 : 0,
+        0
+      ]);
+
+      if (initialMessage) {
+        const msgId = 'msg-' + Date.now();
+        db.run(`
+          INSERT INTO chat_messages (id, sessionId, sender, senderName, senderAvatar, message, text, timestamp, read, attachments)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          msgId,
+          sessionId,
+          'customer',
+          customerName || 'Customer',
+          (customerName || 'CU').slice(0, 2).toUpperCase(),
+          initialMessage,
+          initialMessage,
+          now,
+          0,
+          JSON.stringify([])
+        ]);
+
+        // Auto SLA Welcome Response
+        const slaReplyId = 'msg-' + (Date.now() + 10);
+        const slaText = 'Hello ' + (customerName || '') + '! Thank you for connecting with Richmount Exim (Richexim Group). Our international trade desk has logged your inquiry for ' + (customerCompany ? customerCompany + ' ' : '') + 'and typically responds within 15 minutes during port business hours (09:00 - 18:00 IST).';
+        db.run(`
+          INSERT INTO chat_messages (id, sessionId, sender, senderName, senderAvatar, message, text, timestamp, read, attachments)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          slaReplyId,
+          sessionId,
+          'system',
+          'Richmount Export Desk (Auto-SLA)',
+          'RX',
+          slaText,
+          slaText,
+          new Date(Date.now() + 800).toISOString(),
+          0,
+          JSON.stringify([])
+        ]);
+      }
+
+      saveDatabaseToDisk();
+
+      return res.json({
+        id: sessionId,
+        contactIdentifier: contactIdentifier || customerEmail,
+        customerName,
+        customerEmail,
+        customerCompany,
+        customerCountry,
+        status: initialStatus,
+        priority: initialPriority,
+        tags: tags || ['Storefront Inquiry'],
+        lastMessageText: lastText,
+        lastMessageTime: now,
+        unreadAdminCount: 1,
+        unreadCustomerCount: 0
+      });
+    } else {
+      // Session exists, if initialMessage provided, add it
+      if (initialMessage) {
+        const msgId = 'msg-' + Date.now();
+        db.run(`
+          INSERT INTO chat_messages (id, sessionId, sender, senderName, senderAvatar, message, text, timestamp, read, attachments)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          msgId,
+          sessionId,
+          'customer',
+          customerName || existingSession.customerName || 'Customer',
+          (customerName || existingSession.customerName || 'CU').slice(0, 2).toUpperCase(),
+          initialMessage,
+          initialMessage,
+          now,
+          0,
+          JSON.stringify([])
+        ]);
+
+        db.run(`
+          UPDATE chat_sessions SET
+            lastMessageText = ?,
+            lastMessageTime = ?,
+            status = 'waiting_agent',
+            unreadAdminCount = unreadAdminCount + 1
+          WHERE id = ?
+        `, [initialMessage, now, sessionId]);
+
+        saveDatabaseToDisk();
+      }
+      return res.json(existingSession);
+    }
+  } catch (err: any) {
+    console.error('[API /api/chat/sessions POST Error]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Get Messages for a specific Session
+app.get('/api/chat/sessions/:id/messages', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const sessionId = req.params.id;
+    const stmt = db.prepare('SELECT * FROM chat_messages WHERE sessionId = ? ORDER BY timestamp ASC');
+    stmt.bind([sessionId]);
+    const messages: any[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      messages.push({
+        ...row,
+        attachments: typeof row.attachments === 'string' ? JSON.parse(row.attachments as string || '[]') : [],
+        suggestedPrompts: typeof row.suggestedPrompts === 'string' ? JSON.parse(row.suggestedPrompts as string || '[]') : []
+      });
+    }
+    stmt.free();
+    res.json(messages);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Send Message into Session (Dual-Persona: Customer or Admin Agent)
+app.post('/api/chat/sessions/:id/messages', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const sessionId = req.params.id;
+    const { sender, senderName, senderAvatar, message, attachments } = req.body;
+    const msgId = 'msg-' + Date.now();
+    const now = new Date().toISOString();
+
+    const cleanSender = sender === 'agent' ? 'agent' : sender === 'system' ? 'system' : 'customer';
+    const cleanAvatar = senderAvatar || (cleanSender === 'agent' ? 'RX' : cleanSender === 'system' ? 'SYS' : 'CU');
+
+    db.run(`
+      INSERT INTO chat_messages (id, sessionId, sender, senderName, senderAvatar, message, text, timestamp, read, attachments)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      msgId,
+      sessionId,
+      cleanSender,
+      senderName || (cleanSender === 'agent' ? 'Richmount Trade Agent' : 'Customer'),
+      cleanAvatar,
+      message,
+      message,
+      now,
+      0,
+      JSON.stringify(attachments || [])
+    ]);
+
+    // Update Session
+    if (cleanSender === 'agent') {
+      db.run(`
+        UPDATE chat_sessions SET
+          lastMessageText = ?,
+          lastMessageTime = ?,
+          status = 'active',
+          unreadAdminCount = 0,
+          unreadCustomerCount = unreadCustomerCount + 1
+        WHERE id = ?
+      `, [message, now, sessionId]);
+    } else if (cleanSender === 'customer') {
+      db.run(`
+        UPDATE chat_sessions SET
+          lastMessageText = ?,
+          lastMessageTime = ?,
+          status = 'waiting_agent',
+          unreadAdminCount = unreadAdminCount + 1
+        WHERE id = ?
+      `, [message, now, sessionId]);
+    }
+
+    saveDatabaseToDisk();
+
+    const createdMsg = {
+      id: msgId,
+      sessionId,
+      sender: cleanSender,
+      senderName: senderName || (cleanSender === 'agent' ? 'Richmount Trade Agent' : 'Customer'),
+      senderAvatar: cleanAvatar,
+      message,
+      text: message,
+      timestamp: now,
+      read: 0,
+      attachments: attachments || []
+    };
+
+    res.json({ success: true, message: createdMsg });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. Update Session Metadata (status, priority, adminNotes, assignedAgent, tags, markRead)
+app.put('/api/chat/sessions/:id', async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const sessionId = req.params.id;
+    const { status, priority, adminNotes, assignedAgent, tags, markRead } = req.body;
+
+    if (markRead === 'admin') {
+      db.run(`UPDATE chat_sessions SET unreadAdminCount = 0 WHERE id = ?`, [sessionId]);
+      db.run(`UPDATE chat_messages SET read = 1 WHERE sessionId = ? AND sender = 'customer'`, [sessionId]);
+    } else if (markRead === 'customer') {
+      db.run(`UPDATE chat_sessions SET unreadCustomerCount = 0 WHERE id = ?`, [sessionId]);
+      db.run(`UPDATE chat_messages SET read = 1 WHERE sessionId = ? AND sender != 'customer'`, [sessionId]);
+    }
+
+    if (status) {
+      db.run(`UPDATE chat_sessions SET status = ? WHERE id = ?`, [status, sessionId]);
+    }
+    if (priority) {
+      db.run(`UPDATE chat_sessions SET priority = ? WHERE id = ?`, [priority, sessionId]);
+    }
+    if (adminNotes !== undefined) {
+      db.run(`UPDATE chat_sessions SET adminNotes = ? WHERE id = ?`, [adminNotes, sessionId]);
+    }
+    if (assignedAgent) {
+      db.run(`UPDATE chat_sessions SET assignedAgent = ? WHERE id = ?`, [assignedAgent, sessionId]);
+    }
+    if (tags) {
+      db.run(`UPDATE chat_sessions SET tags = ? WHERE id = ?`, [JSON.stringify(tags), sessionId]);
+    }
+
+    saveDatabaseToDisk();
+
+    // Return updated session
+    const stmt = db.prepare('SELECT * FROM chat_sessions WHERE id = ?');
+    stmt.bind([sessionId]);
+    let updatedSession = null;
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      updatedSession = {
+        ...row,
+        tags: typeof row.tags === 'string' ? JSON.parse(row.tags as string || '[]') : []
+      };
+    }
+    stmt.free();
+
+    res.json({ success: true, session: updatedSession });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

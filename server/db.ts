@@ -67,7 +67,7 @@ export function getDatabaseStats() {
 
   const tableCounts: Record<string, number> = {};
   if (dbInstance) {
-    const tables = ['products', 'categories', 'quotes', 'certifications', 'articles', 'careers', 'inquiries', 'chat_messages'];
+    const tables = ['products', 'categories', 'quotes', 'certifications', 'articles', 'careers', 'inquiries', 'chat_messages', 'chat_sessions'];
     for (const table of tables) {
       try {
         const res = dbInstance.exec(`SELECT COUNT(*) as count FROM ${table}`);
@@ -229,12 +229,35 @@ function runMigrations(db: Database) {
       status TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+      id TEXT PRIMARY KEY,
+      contactIdentifier TEXT,
+      customerName TEXT,
+      customerEmail TEXT,
+      customerCompany TEXT,
+      customerCountry TEXT,
+      status TEXT DEFAULT 'active', -- 'active' | 'waiting_agent' | 'closed' | 'resolved'
+      priority TEXT DEFAULT 'normal', -- 'low' | 'normal' | 'urgent'
+      tags TEXT, -- JSON array
+      adminNotes TEXT,
+      assignedAgent TEXT,
+      lastMessageText TEXT,
+      lastMessageTime TEXT,
+      unreadAdminCount INTEGER DEFAULT 0,
+      unreadCustomerCount INTEGER DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS chat_messages (
       id TEXT PRIMARY KEY,
-      sender TEXT,
+      sessionId TEXT,
+      sender TEXT, -- 'customer' | 'agent' | 'system'
       senderName TEXT,
+      senderAvatar TEXT,
+      message TEXT,
       text TEXT,
       timestamp TEXT,
+      read INTEGER DEFAULT 0,
+      attachments TEXT, -- JSON array
       suggestedPrompts TEXT -- JSON array
     );
 
@@ -252,6 +275,13 @@ function runMigrations(db: Database) {
       updatedAt TEXT
     );
   `);
+
+  // Safe migrations for chat_messages columns
+  try { db.run("ALTER TABLE chat_messages ADD COLUMN sessionId TEXT"); } catch {}
+  try { db.run("ALTER TABLE chat_messages ADD COLUMN senderAvatar TEXT"); } catch {}
+  try { db.run("ALTER TABLE chat_messages ADD COLUMN message TEXT"); } catch {}
+  try { db.run("ALTER TABLE chat_messages ADD COLUMN read INTEGER DEFAULT 0"); } catch {}
+  try { db.run("ALTER TABLE chat_messages ADD COLUMN attachments TEXT"); } catch {}
 
   // Seed default data if categories table is empty
   const countRes = db.exec('SELECT COUNT(*) as count FROM categories');
@@ -274,6 +304,13 @@ function runMigrations(db: Database) {
   const jobAppCount = (jobAppRes.length > 0 && jobAppRes[0].values.length > 0) ? Number(jobAppRes[0].values[0][0]) : 0;
   if (jobAppCount === 0) {
     seedJobApplications(db);
+  }
+
+  // Ensure Chat Sessions & initial message threads are seeded
+  const chatSessRes = db.exec('SELECT COUNT(*) as count FROM chat_sessions');
+  const chatSessCount = (chatSessRes.length > 0 && chatSessRes[0].values.length > 0) ? Number(chatSessRes[0].values[0][0]) : 0;
+  if (chatSessCount === 0) {
+    seedChatSessions(db);
   }
 }
 
@@ -1309,5 +1346,205 @@ function seedSEOMetadata(db: Database) {
       INSERT OR REPLACE INTO seo_metadata (pageKey, pageName, title, description, keywords, ogTitle, ogDescription, ogImage, twitterCard, canonicalUrl, updatedAt)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [s.pageKey, s.pageName, s.title, s.description, s.keywords, s.ogTitle, s.ogDescription, s.ogImage, s.twitterCard, s.canonicalUrl, s.updatedAt]);
+  }
+}
+
+function seedChatSessions(db: Database) {
+  console.log('[SQLite] Seeding dual-persona B2B export chat sessions & message threads...');
+
+  const sessions = [
+    {
+      id: 'sess-101',
+      contactIdentifier: 'm.weber@steag-fernwaerme.de',
+      customerName: 'Markus Weber',
+      customerEmail: 'm.weber@steag-fernwaerme.de',
+      customerCompany: 'Steag Fernwärme GmbH',
+      customerCountry: 'Germany',
+      status: 'waiting_agent',
+      priority: 'urgent',
+      tags: JSON.stringify(['Bulk RFQ', 'CIF Rotterdam', 'Wood Pellets 6mm']),
+      adminNotes: 'Needs immediate CIF Rotterdam price for 3,500 MT test shipment. Asking for ENplus-A1 laboratory certificate & ash fusion data. Contact via German WhatsApp if required.',
+      assignedAgent: 'Sarah Jenkins (Senior Trade Desk)',
+      lastMessageText: 'Can you confirm if you can guarantee ash content <0.7% on dry basis for the 3,500 MT lot to Rotterdam?',
+      lastMessageTime: '2026-09-09T18:45:00.000Z',
+      unreadAdminCount: 1,
+      unreadCustomerCount: 0
+    },
+    {
+      id: 'sess-102',
+      contactIdentifier: 'tariq@emiratesbiopower.ae',
+      customerName: 'Tariq Al-Hashimi',
+      customerEmail: 'tariq@emiratesbiopower.ae',
+      customerCompany: 'Emirates Bio Power LLC',
+      customerCountry: 'UAE',
+      status: 'active',
+      priority: 'normal',
+      tags: JSON.stringify(['CNSL Oil', 'FOB Cochin', 'Marine Boiler']),
+      adminNotes: 'Inquired about raw CNSL (Cashew Nut Shell Liquid) in flexibags or ISO tanks. Destination Jebel Ali for cement preheater fuel test.',
+      assignedAgent: 'Alex Morgan (Logistics & Chartering)',
+      lastMessageText: 'We have prepared the drum vs ISO container comparison sheet and sent it to your registered email.',
+      lastMessageTime: '2026-09-09T16:20:00.000Z',
+      unreadAdminCount: 0,
+      unreadCustomerCount: 1
+    },
+    {
+      id: 'sess-103',
+      contactIdentifier: 'k.sato@nippon-biomass.co.jp',
+      customerName: 'Kenji Sato',
+      customerEmail: 'k.sato@nippon-biomass.co.jp',
+      customerCompany: 'Nippon Energy & Bio Carbon Co.',
+      customerCountry: 'Japan',
+      status: 'resolved',
+      priority: 'normal',
+      tags: JSON.stringify(['Activated Carbon', 'JIS Compliance', 'Sample Dispatched']),
+      adminNotes: 'Sample lot of 2kg 4x8 mesh steam-activated carbon dispatched via DHL #8492019482. JIS testing currently underway in Tokyo.',
+      assignedAgent: 'Vikram Sengupta (Quality & Lab)',
+      lastMessageText: 'Airway bill #8492019482 shows arrival at Narita customs clearance today. Thank you!',
+      lastMessageTime: '2026-09-08T11:15:00.000Z',
+      unreadAdminCount: 0,
+      unreadCustomerCount: 0
+    }
+  ];
+
+  for (const s of sessions) {
+    db.run(`
+      INSERT OR REPLACE INTO chat_sessions (id, contactIdentifier, customerName, customerEmail, customerCompany, customerCountry, status, priority, tags, adminNotes, assignedAgent, lastMessageText, lastMessageTime, unreadAdminCount, unreadCustomerCount)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [s.id, s.contactIdentifier, s.customerName, s.customerEmail, s.customerCompany, s.customerCountry, s.status, s.priority, s.tags, s.adminNotes, s.assignedAgent, s.lastMessageText, s.lastMessageTime, s.unreadAdminCount, s.unreadCustomerCount]);
+  }
+
+  const messages = [
+    // Thread 101
+    {
+      id: 'msg-101-1',
+      sessionId: 'sess-101',
+      sender: 'customer',
+      senderName: 'Markus Weber',
+      senderAvatar: 'MW',
+      message: 'Hello, we are procuring 3,500 MT of industrial wood pellets for our district heating station near Essen. We need delivery at Rotterdam Port.',
+      text: 'Hello, we are procuring 3,500 MT of industrial wood pellets for our district heating station near Essen. We need delivery at Rotterdam Port.',
+      timestamp: '2026-09-09T18:30:00.000Z',
+      read: 1,
+      attachments: JSON.stringify([])
+    },
+    {
+      id: 'msg-101-2',
+      sessionId: 'sess-101',
+      sender: 'agent',
+      senderName: 'Sarah Jenkins (Senior Trade Desk)',
+      senderAvatar: 'SJ',
+      message: 'Greetings Herr Weber! Richmount Exim supplies ENplus-A1 aligned 6mm pellets manufactured from sustainably harvested virgin pine and hardwood residues. Ash content is rigorously maintained below 0.65%.',
+      text: 'Greetings Herr Weber! Richmount Exim supplies ENplus-A1 aligned 6mm pellets manufactured from sustainably harvested virgin pine and hardwood residues. Ash content is rigorously maintained below 0.65%.',
+      timestamp: '2026-09-09T18:35:00.000Z',
+      read: 1,
+      attachments: JSON.stringify(['COA-Wood-Pellets-ENplus-A1.pdf'])
+    },
+    {
+      id: 'msg-101-3',
+      sessionId: 'sess-101',
+      sender: 'customer',
+      senderName: 'Markus Weber',
+      senderAvatar: 'MW',
+      message: 'Can you confirm if you can guarantee ash content <0.7% on dry basis for the 3,500 MT lot to Rotterdam?',
+      text: 'Can you confirm if you can guarantee ash content <0.7% on dry basis for the 3,500 MT lot to Rotterdam?',
+      timestamp: '2026-09-09T18:45:00.000Z',
+      read: 0,
+      attachments: JSON.stringify([])
+    },
+
+    // Thread 102
+    {
+      id: 'msg-102-1',
+      sessionId: 'sess-102',
+      sender: 'customer',
+      senderName: 'Tariq Al-Hashimi',
+      senderAvatar: 'TA',
+      message: 'Good day, we require 150 MT Cashew Nut Shell Liquid (CNSL) FOB Cochin. What is the typical moisture and iodine value?',
+      text: 'Good day, we require 150 MT Cashew Nut Shell Liquid (CNSL) FOB Cochin. What is the typical moisture and iodine value?',
+      timestamp: '2026-09-09T15:50:00.000Z',
+      read: 1,
+      attachments: JSON.stringify([])
+    },
+    {
+      id: 'msg-102-2',
+      sessionId: 'sess-102',
+      sender: 'agent',
+      senderName: 'Alex Morgan (Logistics & Chartering)',
+      senderAvatar: 'AM',
+      message: 'Hello Tariq, our CNSL features gross calorific value > 9,000 kcal/kg, moisture < 1.5%, and cardanol content > 70%. Shipped in 200L steel drums or 24,000L ISO tanks.',
+      text: 'Hello Tariq, our CNSL features gross calorific value > 9,000 kcal/kg, moisture < 1.5%, and cardanol content > 70%. Shipped in 200L steel drums or 24,000L ISO tanks.',
+      timestamp: '2026-09-09T16:05:00.000Z',
+      read: 1,
+      attachments: JSON.stringify([])
+    },
+    {
+      id: 'msg-102-3',
+      sessionId: 'sess-102',
+      sender: 'customer',
+      senderName: 'Tariq Al-Hashimi',
+      senderAvatar: 'TA',
+      message: 'Could you send over the pricing difference between steel drums and ISO tanks to Jebel Ali?',
+      text: 'Could you send over the pricing difference between steel drums and ISO tanks to Jebel Ali?',
+      timestamp: '2026-09-09T16:12:00.000Z',
+      read: 1,
+      attachments: JSON.stringify([])
+    },
+    {
+      id: 'msg-102-4',
+      sessionId: 'sess-102',
+      sender: 'agent',
+      senderName: 'Alex Morgan (Logistics & Chartering)',
+      senderAvatar: 'AM',
+      message: 'We have prepared the drum vs ISO container comparison sheet and sent it to your registered email.',
+      text: 'We have prepared the drum vs ISO container comparison sheet and sent it to your registered email.',
+      timestamp: '2026-09-09T16:20:00.000Z',
+      read: 0,
+      attachments: JSON.stringify(['CNSL-Packaging-Economics-JebelAli.pdf'])
+    },
+
+    // Thread 103
+    {
+      id: 'msg-103-1',
+      sessionId: 'sess-103',
+      sender: 'customer',
+      senderName: 'Kenji Sato',
+      senderAvatar: 'KS',
+      message: 'We are testing activated coconut shell carbon for municipal water de-chlorination. Iodine number must exceed 1,050 mg/g.',
+      text: 'We are testing activated coconut shell carbon for municipal water de-chlorination. Iodine number must exceed 1,050 mg/g.',
+      timestamp: '2026-09-08T09:30:00.000Z',
+      read: 1,
+      attachments: JSON.stringify([])
+    },
+    {
+      id: 'msg-103-2',
+      sessionId: 'sess-103',
+      sender: 'agent',
+      senderName: 'Vikram Sengupta (Quality & Lab)',
+      senderAvatar: 'VS',
+      message: 'Konichiwa Sato-san. Our acid-washed coconut shell carbon delivers iodine numbers between 1,050 and 1,150 mg/g with methylene blue adsorption >180 mg/g.',
+      text: 'Konichiwa Sato-san. Our acid-washed coconut shell carbon delivers iodine numbers between 1,050 and 1,150 mg/g with methylene blue adsorption >180 mg/g.',
+      timestamp: '2026-09-08T09:45:00.000Z',
+      read: 1,
+      attachments: JSON.stringify([])
+    },
+    {
+      id: 'msg-103-3',
+      sessionId: 'sess-103',
+      sender: 'customer',
+      senderName: 'Kenji Sato',
+      senderAvatar: 'KS',
+      message: 'Airway bill #8492019482 shows arrival at Narita customs clearance today. Thank you!',
+      text: 'Airway bill #8492019482 shows arrival at Narita customs clearance today. Thank you!',
+      timestamp: '2026-09-08T11:15:00.000Z',
+      read: 1,
+      attachments: JSON.stringify([])
+    }
+  ];
+
+  for (const m of messages) {
+    db.run(`
+      INSERT OR REPLACE INTO chat_messages (id, sessionId, sender, senderName, senderAvatar, message, text, timestamp, read, attachments)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [m.id, m.sessionId, m.sender, m.senderName, m.senderAvatar, m.message, m.text, m.timestamp, m.read, m.attachments]);
   }
 }

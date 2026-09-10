@@ -150,12 +150,35 @@ export interface InquiryLead {
   status: 'New' | 'Contacted' | 'In Progress' | 'Converted';
 }
 
+export interface ChatSession {
+  id: string;
+  contactIdentifier: string;
+  customerName: string;
+  customerEmail: string;
+  customerCompany: string;
+  customerCountry: string;
+  status: 'active' | 'waiting_agent' | 'closed' | 'resolved';
+  priority: 'low' | 'normal' | 'urgent';
+  tags: string[];
+  adminNotes?: string;
+  assignedAgent?: string;
+  lastMessageText: string;
+  lastMessageTime: string;
+  unreadAdminCount: number;
+  unreadCustomerCount: number;
+}
+
 export interface ChatMessage {
   id: string;
-  sender: 'user' | 'agent' | 'system';
+  sessionId?: string;
+  sender: 'customer' | 'agent' | 'system' | 'user';
   senderName?: string;
-  text: string;
+  senderAvatar?: string;
+  message?: string;
+  text?: string;
   timestamp: string;
+  read?: number;
+  attachments?: string[];
   suggestedPrompts?: string[];
 }
 
@@ -205,6 +228,7 @@ export interface AppInitialData {
   jobApplications?: JobApplication[];
   inquiries: InquiryLead[];
   chatHistory: ChatMessage[];
+  chatSessions?: ChatSession[];
   databaseStats: DatabaseStats;
   seoMetadata?: SEOMetadataMap;
   metrics: {

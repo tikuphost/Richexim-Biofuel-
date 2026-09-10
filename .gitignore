@@ -1,8 +1,51 @@
+# Dependencies
 node_modules/
-build/
+/.pnp
+.pnp.js
+
+# Production & Build Outputs
 dist/
+build/
 coverage/
-.DS_Store
-*.log
-.env*
+
+# Vite & Development Cache
+.vite/
+.cache/
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 !.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS & Editor Artifacts
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# SQLite Database Binary Files & Runtime Backups
+data/*.sqlite*
+data/backups/*
+!data/.gitkeep
+!data/backups/.gitkeep

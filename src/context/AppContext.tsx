@@ -9,6 +9,7 @@ import {
   CareerJob,
   InquiryLead,
   ChatMessage,
+  ChatSession,
   UserProfile,
   UserRole,
   DatabaseStats,
@@ -119,9 +120,21 @@ interface AppContextType {
   selectedQuoteForView: RFQQuote | null;
   setSelectedQuoteForView: (q: RFQQuote | null) => void;
 
-  // Chat Drawer
+  // Chat Drawer & Dual-Persona Engine
   isChatOpen: boolean;
   setIsChatOpen: (open: boolean) => void;
+  chatSessions: ChatSession[];
+  activeAdminSessionId: string | null;
+  setActiveAdminSessionId: (id: string | null) => void;
+  customerChatSession: ChatSession | null;
+  setCustomerChatSession: (s: ChatSession | null) => void;
+  activeSessionMessages: ChatMessage[];
+  startCustomerChatSession: (details: { name: string; email: string; company: string; country: string; message: string; tags?: string[] }) => Promise<ChatSession | null>;
+  sendCustomerChatMessage: (text: string) => Promise<void>;
+  sendAdminChatMessage: (sessionId: string, text: string, senderName?: string) => Promise<void>;
+  updateChatSessionMeta: (sessionId: string, updates: Partial<ChatSession>) => Promise<void>;
+  markChatSessionRead: (sessionId: string, who: 'admin' | 'customer') => Promise<void>;
+  refreshChatSessions: () => Promise<void>;
   sendChatMessage: (text: string) => Promise<void>;
 
   // Admin Actions
@@ -228,6 +241,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
 
+  // Dual-Persona Chat Session States
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [activeAdminSessionId, setActiveAdminSessionId] = useState<string | null>('sess-101');
+  const [activeSessionMessages, setActiveSessionMessages] = useState<ChatMessage[]>([]);
+  const [customerChatSession, setCustomerChatSession] = useState<ChatSession | null>(() => {
+    try {
+      const saved = localStorage.getItem('rme_customer_chat_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Persist customer chat session
+  useEffect(() => {
+    try {
+      if (customerChatSession) {
+        localStorage.setItem('rme_customer_chat_session', JSON.stringify(customerChatSession));
+      } else {
+        localStorage.removeItem('rme_customer_chat_session');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [customerChatSession]);
+
+  // Load messages whenever activeAdminSessionId changes
+  useEffect(() => {
+    if (!activeAdminSessionId) return;
+    let isCurrent = true;
+    fetch(`/api/chat/sessions/${activeAdminSessionId}/messages`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (isCurrent && Array.isArray(data)) {
+          setActiveSessionMessages(data);
+        }
+      })
+      .catch((e) => console.error('Failed to load session messages:', e));
+    return () => {
+      isCurrent = false;
+    };
+  }, [activeAdminSessionId]);
+
   // Persist RFQ items
   useEffect(() => {
     try {
@@ -319,6 +375,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setJobApplications(data.jobApplications || []);
           setInquiries(data.inquiries || []);
           setChatHistory(data.chatHistory || []);
+          if (data.chatSessions && data.chatSessions.length > 0) {
+            setChatSessions(data.chatSessions);
+            // Default active admin session if not set
+            setActiveAdminSessionId((prev) => prev || data.chatSessions![0].id);
+          }
           setDatabaseStats(data.databaseStats || null);
           if (data.seoMetadata && Object.keys(data.seoMetadata).length > 0) {
             setSeoMetadata((prev) => ({ ...prev, ...data.seoMetadata }));
@@ -497,6 +558,224 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role,
       name: role === 'Admin' ? 'Executive Director (Admin)' : role === 'Sales Manager' ? 'Vikramaditya Rao (Sales)' : role === 'Logistics Coordinator' ? 'Ananya Sharma (Logistics)' : prev.name
     }));
+  };
+
+  const refreshChatSessions = async () => {
+    try {
+      const res = await fetch('/api/chat/sessions');
+      if (res.ok) {
+        const data = await res.json();
+        setChatSessions(data);
+      }
+    } catch (e) {
+      console.error('Failed to refresh chat sessions:', e);
+    }
+  };
+
+  const startCustomerChatSession = async (details: {
+    name: string;
+    email: string;
+    company: string;
+    country: string;
+    message: string;
+    tags?: string[];
+  }): Promise<ChatSession | null> => {
+    try {
+      const res = await fetch('/api/chat/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactIdentifier: details.email || `guest-${Date.now()}`,
+          customerName: details.name,
+          customerEmail: details.email,
+          customerCompany: details.company,
+          customerCountry: details.country,
+          initialMessage: details.message,
+          tags: details.tags || ['Storefront Inquiry']
+        })
+      });
+
+      if (res.ok) {
+        const session: ChatSession = await res.json();
+        setCustomerChatSession(session);
+        setChatSessions((prev) => {
+          const exists = prev.find((s) => s.id === session.id);
+          if (exists) return prev.map((s) => (s.id === session.id ? session : s));
+          return [session, ...prev];
+        });
+
+        // Load messages for this new session
+        const msgRes = await fetch(`/api/chat/sessions/${session.id}/messages`);
+        if (msgRes.ok) {
+          const msgs = await msgRes.json();
+          if (session.id === activeAdminSessionId || !activeAdminSessionId) {
+            setActiveSessionMessages(msgs);
+            setActiveAdminSessionId(session.id);
+          }
+        }
+        return session;
+      }
+    } catch (e) {
+      console.error('Failed to start customer chat session:', e);
+    }
+    return null;
+  };
+
+  const sendCustomerChatMessage = async (text: string) => {
+    if (!customerChatSession) return;
+    const now = new Date().toISOString();
+    const optimisticMsg: ChatMessage = {
+      id: 'msg-' + Date.now(),
+      sessionId: customerChatSession.id,
+      sender: 'customer',
+      senderName: customerChatSession.customerName || currentUser.name,
+      senderAvatar: (customerChatSession.customerName || 'CU').slice(0, 2).toUpperCase(),
+      message: text,
+      text,
+      timestamp: now,
+      read: 0,
+      attachments: []
+    };
+
+    if (activeAdminSessionId === customerChatSession.id) {
+      setActiveSessionMessages((prev) => [...prev, optimisticMsg]);
+    }
+
+    setChatSessions((prev) =>
+      prev.map((s) =>
+        s.id === customerChatSession.id
+          ? {
+              ...s,
+              lastMessageText: text,
+              lastMessageTime: now,
+              status: 'waiting_agent',
+              unreadAdminCount: (s.unreadAdminCount || 0) + 1
+            }
+          : s
+      )
+    );
+
+    try {
+      const res = await fetch(`/api/chat/sessions/${customerChatSession.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: 'customer',
+          senderName: customerChatSession.customerName || currentUser.name,
+          senderAvatar: (customerChatSession.customerName || 'CU').slice(0, 2).toUpperCase(),
+          message: text,
+          attachments: []
+        })
+      });
+
+      if (res.ok) {
+        // Fetch updated session messages to receive any auto-SLA reply
+        const msgRes = await fetch(`/api/chat/sessions/${customerChatSession.id}/messages`);
+        if (msgRes.ok) {
+          const msgs = await msgRes.json();
+          if (activeAdminSessionId === customerChatSession.id) {
+            setActiveSessionMessages(msgs);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error sending customer chat message:', e);
+    }
+  };
+
+  const sendAdminChatMessage = async (sessionId: string, text: string, senderName?: string) => {
+    const defaultAgentName = currentUser.role === 'Admin' ? 'Executive Director (Admin)' : currentUser.name;
+    const chosenName = senderName || defaultAgentName;
+    const now = new Date().toISOString();
+
+    const optimisticMsg: ChatMessage = {
+      id: 'msg-' + Date.now(),
+      sessionId,
+      sender: 'agent',
+      senderName: chosenName,
+      senderAvatar: 'RX',
+      message: text,
+      text,
+      timestamp: now,
+      read: 0,
+      attachments: []
+    };
+
+    setActiveSessionMessages((prev) => [...prev, optimisticMsg]);
+
+    setChatSessions((prev) =>
+      prev.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              lastMessageText: text,
+              lastMessageTime: now,
+              status: 'active',
+              unreadAdminCount: 0,
+              unreadCustomerCount: (s.unreadCustomerCount || 0) + 1
+            }
+          : s
+      )
+    );
+
+    try {
+      await fetch(`/api/chat/sessions/${sessionId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: 'agent',
+          senderName: chosenName,
+          senderAvatar: 'RX',
+          message: text,
+          attachments: []
+        })
+      });
+    } catch (e) {
+      console.error('Error sending admin chat message:', e);
+    }
+  };
+
+  const updateChatSessionMeta = async (sessionId: string, updates: Partial<ChatSession>) => {
+    setChatSessions((prev) =>
+      prev.map((s) => (s.id === sessionId ? { ...s, ...updates } : s))
+    );
+    if (customerChatSession && customerChatSession.id === sessionId) {
+      setCustomerChatSession((prev) => (prev ? { ...prev, ...updates } : null));
+    }
+
+    try {
+      await fetch(`/api/chat/sessions/${sessionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+    } catch (e) {
+      console.error('Error updating chat session meta:', e);
+    }
+  };
+
+  const markChatSessionRead = async (sessionId: string, who: 'admin' | 'customer') => {
+    setChatSessions((prev) =>
+      prev.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              unreadAdminCount: who === 'admin' ? 0 : s.unreadAdminCount,
+              unreadCustomerCount: who === 'customer' ? 0 : s.unreadCustomerCount
+            }
+          : s
+      )
+    );
+
+    try {
+      await fetch(`/api/chat/sessions/${sessionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ markRead: who })
+      });
+    } catch (e) {
+      console.error('Error marking chat session read:', e);
+    }
   };
 
   const sendChatMessage = async (text: string) => {
@@ -864,6 +1143,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedQuoteForView,
         isChatOpen,
         setIsChatOpen,
+        chatSessions,
+        activeAdminSessionId,
+        setActiveAdminSessionId,
+        customerChatSession,
+        setCustomerChatSession,
+        activeSessionMessages,
+        startCustomerChatSession,
+        sendCustomerChatMessage,
+        sendAdminChatMessage,
+        updateChatSessionMeta,
+        markChatSessionRead,
+        refreshChatSessions,
+        sendChatMessage,
         isAdminOpen,
         setIsAdminOpen,
         addProduct,

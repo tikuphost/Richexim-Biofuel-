@@ -1,8 +1,21 @@
 {
-  "name": "react-example",
+  "name": "richmount-exim-portal",
+  "version": "1.0.0",
+  "description": "Enterprise export and supply chain portal for Richmount Exim (Richexim Group) specializing in industrial biomass, green fuels, and activated carbon with proforma RFQ calculator.",
   "private": true,
-  "version": "0.0.0",
+  "license": "MIT",
   "type": "module",
+  "keywords": [
+    "biomass",
+    "export-trade",
+    "b2b-portal",
+    "rfq-calculator",
+    "react19",
+    "express",
+    "sqlite-wasm",
+    "typescript",
+    "tailwindcss"
+  ],
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
