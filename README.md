@@ -108,7 +108,7 @@ The application is structured as a unified full-stack service where an Express b
 ## 💻 Getting Started
 
 ### Prerequisites
-- **Node.js**: `v18.x` or `v20.x` or newer
+- **Node.js**: `v20.x`, `v22.x`, or `v24.x` (LTS recommended)
 - **npm** (or `pnpm` / `bun`)
 
 ### 1. Clone the Repository
